@@ -4,8 +4,19 @@ import subprocess
 import argparse
 from shutil import rmtree
 from fastVideo import fastVideo
+from fasterVideo import fasterVideo
 
 TEMP_FOLDER = ".TEMP_LONG"
+
+def str2bool(v):
+    if isinstance(v, bool):
+       return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
 
 parser = argparse.ArgumentParser()
 parser.add_argument("videoFile", help="the path to the video file you want modified.")
@@ -45,6 +56,15 @@ parser.add_argument(
     help="tells how many seconds should the video split chunks be, \
         use lower values if system has low ram, default 1800 (30 minutes).",
 )
+parser.add_argument(
+    "--open", 
+    "-o", 
+    type=str2bool, 
+    nargs='?', 
+    const=True, 
+    default=False,
+    help="open file after processing is complete. Accepts boolean as input",
+)
 args = parser.parse_args()
 
 videoFile = args.videoFile
@@ -63,16 +83,22 @@ splitVideo = 'ffmpeg -i "{}" -acodec copy -f segment -segment_time {} -vcodec co
 subprocess.call(splitVideo, shell=True)
 
 # processing
-for files in os.listdir(TEMP_FOLDER):
-    videoPath = "{}/{}".format(TEMP_FOLDER, files)
-    fastVideo(
-        videoPath,
-        args.silentSpeed,
-        args.videoSpeed,
-        args.silentThreshold,
-        args.frameMargin,
-    )
-    os.remove(videoPath)
+if args.silentSpeed == 99999 and args.videoSpeed == 1.0:
+    for files in os.listdir(TEMP_FOLDER):
+        videoPath = "{}/{}".format(TEMP_FOLDER, files)
+        fasterVideo(videoPath, args.silentThreshold, args.frameMargin)
+        os.remove(videoPath)
+else:
+    for files in os.listdir(TEMP_FOLDER):
+        videoPath = "{}/{}".format(TEMP_FOLDER, files)
+        fastVideo(
+            videoPath,
+            args.silentSpeed,
+            args.videoSpeed,
+            args.silentThreshold,
+            args.frameMargin,
+        )
+        os.remove(videoPath)
 
 # mergeing
 generateFile = "for f in ./{}/*.mp4; do echo \"file '$f'\" >> mylist.txt; done".format(
@@ -91,5 +117,17 @@ outFile = filename + "_faster.mp4"
 
 if not os.path.isfile(outFile):
     raise IOError(f"the file {outFile} was not created")
+
+if args.open:
+    try:  # should work on Windows
+        os.startfile(outFile)
+    except AttributeError:
+        try:  # should work on MacOS and most linux versions
+            subprocess.call(["open", outFile])
+        except:
+            try: # should work on WSL2
+                subprocess.call(["cmd.exe", "/C", "start", outFile])
+            except:
+                print("could not open output file")
 
 rmtree(TEMP_FOLDER)
